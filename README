@@ -1,1 +1,1 @@
-This is a thread pool library, which is use to manage user tasks.
+thread_pool library internally manages a configured number of threads. which will be used for any givent task.
