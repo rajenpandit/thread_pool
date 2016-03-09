@@ -1,1 +1,1 @@
-thread_pool library internally manages a configured number of threads. which will be used for any givent task.
+thread_pool library internally manages configured number of threads. which will be used for any givent task.
