@@ -1,10 +1,12 @@
 CXXFLAGS:=$(CXXFLAGS) -std=c++11
-TestProg: thread_pool.o TestProg.o
-	$(CXX) TestProg.o thread_pool.o -lpthread -o TestProg
+OBJS=thread_pool.o
+TestProg: $(OBJS) TestProg.o 
+	$(CXX) TestProg.o $(OBJS) -lpthread -o TestProg
 thread_pool.o:
 	$(CXX) $(CXXFLAGS) -c thread_pool.cpp
 TestProg.o:
 	$(CXX) $(CXXFLAGS) -c TestProg.cpp
-
+release:
+	ar -rv libthreadpool.a $(OBJS)
 clean:
-	rm *.o
+	rm *.o libthreadpool.a
