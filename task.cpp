@@ -26,6 +26,7 @@ int main()
 #if 1
 	A obj;
 	task_base task = make_task(&A::printData,obj,a,3);
+//	task_base task = make_task(fun,obj);
 	task();
 	std::cout<<"a:"<<a<<std::endl;
 #else

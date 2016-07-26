@@ -4,8 +4,11 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <future>
+#include <mutex>
 //#include <type_traits>
 
+template <typename _Res> class task_future;
 class task_base
 {
 public:
@@ -28,9 +31,14 @@ protected:
 	std::unique_ptr<task_base> _task;
 };
 
-template<typename... Ts>
+
+template<typename R, typename... Ts>
 class task : public task_base
 {
+public:
+	using type = task<R,Ts...>;
+	using result_type = R;
+private:
 	template <std::size_t... T>
 		struct helper_index{
 		};
@@ -42,14 +50,21 @@ class task : public task_base
 	template <std::size_t... T>
 		struct helper_gen_seq<0, T...> : helper_index<T...>{
 		};
-
-
+	struct call_helper{
+		call_helper(task::type& p) : _p(p)
+		{}
+		void operator()()
+		{_p.helper_func(_p._args);}
+	private:
+		task::type &_p;
+	};
 public:	
-	task(std::function<void (Ts...)> func, Ts&&... args) : _function(func), _args(std::forward<Ts>(args)...){
+	template <typename F>
+	task(F&& func, Ts&&... args) : _pt(std::forward<F>(func)), _args(std::forward<Ts>(args)...){
 	}
-	task(const task<Ts...>& t)=delete;
-	task& operator = (const task<Ts...>& t) = delete;
-	task(task<Ts...>&& t){
+	task(const task& t)=delete;
+	task& operator = (const task& t) = delete;
+	task(task&& t){
 		swap(*this, t);
 	}
 	task& operator = (task&& t){
@@ -58,56 +73,112 @@ public:
 public:
 	template <typename... Args, std::size_t... Is>
 	void helper_func(std::tuple<Args...>& tup, helper_index<Is...>){
-		_function(std::get<Is>(tup)...);
+		_pt(std::get<Is>(tup)...);
 	}
 	
 	template <typename... Args>
 	void helper_func(std::tuple<Args...>& tup){
 		helper_func(tup, helper_gen_seq<sizeof...(Args)>{});
 	}
+	task_future<R> get_future(){
+		return task_future<R>(*this,_pt.get_future());
+	}
 public:
 	void operator () (){
-		helper_func(_args);
+		call_helper h(*this);
+		std::call_once(flag,h);
 	}
 private:
-	friend void swap(task<Ts...>& a, task<Ts...>& b){
-		std::swap(a._function, b._function);
+	friend void swap(task& a, task& b){
+		//std::swap(a._function, b._function);
 		std::swap(a._args, b._args);	
 	}
 private:
-	std::function<void (Ts...)> _function;
+	std::packaged_task<R(Ts...)> _pt;
 	std::tuple<Ts...> _args;
+	std::once_flag flag;
 };
 
-
-template <typename F, typename... Args>
-task_base make_task(F&& function, Args&&... args)
+//For future reference : decltype(std::declval<F>()(std::declval<Args>()...))
+template <typename F, typename... Args, typename R=decltype(std::declval<F>()(std::declval<Args>()...))>
+std::unique_ptr<task<R,Args...>>
+make_task(F&& fun, Args&&... args)
 {
-	task_base tb(std::unique_ptr<task_base>(new task<Args...>(std::forward<F>(function), std::forward<Args>(args)...)));
-	return tb;
+	//using R=;
+	return std::unique_ptr<task<R,Args...>>(new task<R,Args...>(std::forward<F>(fun),std::forward<Args>(args)...));
 }
-#if 0
-
-template <typename R, typename T, 
-	 typename... Args>
-class mf_helper{
-private:
-	typedef R (T::*F)(Args...);
-	F f_;
-public:
-	typedef mf_helper<R,T,Args...> type;
-	explicit mf_helper(F f) : f_(f){}
-	R operator()(T &p, Args&&... args){
-		return (p.*f_)(std::forward<Args>(args)...);
-	}
-};
-
-template <typename F, typename T, typename... Args>
-task_base make_task(F&& function,T& t , Args&&... args)
+template <typename F, typename T,typename... Args, typename R=decltype((std::declval<T>().*std::declval<F>())(std::declval<Args>()...))>
+std::unique_ptr<task<R,T,Args...>>
+make_task(F fun, T&& obj, Args&&... args)
 {
-	typedef typename mf_helper<void,T,Args...>::type mf_type;
-	task_base tb(std::unique_ptr<task_base>(new task<mf_type,T,Args...>(mf_helper<void,T,Args...>(std::forward<F>(function)),t, std::forward<Args>(args)...)));
+	//using R=int;
+	return std::unique_ptr<task<R,T,Args...>>(new task<R,T,Args...>(std::function<R(T,Args...)>(std::forward<F>(fun)),
+				std::forward<T>(obj),std::forward<Args>(args)...));
+}
+
+#if 0
+template <typename R, typename T, typename... Ts, typename T1, typename... Args>
+std::unique_ptr<task<R,T1,Ts...>>
+make_task(R (T::*f)(Ts...),T1&& obj, Args&&... args)
+{
+	using ftype = std::function<R (T1, Ts...)>;
+	return std::unique_ptr<task<R,T1,Ts...>>(new task<R,T1,Ts...>(ftype{f},std::forward<T1>(obj),std::forward<Ts>(args)...));
+}
+/*
+template <typename R,typename... Ts, typename... Args>
+std::unique_ptr<task<R,Ts...>>
+make_task(R (*f)(Ts...), Args&&... args)
+{
+	using ftype = std::function<R (Ts...)>;
+	return std::unique_ptr<task<R,Ts...>>(new task<R,Ts...>(ftype{f},std::forward<Ts>(args)...));
+}
+*/
+#elif 0
+template <typename R, typename T, typename... Ts, typename T1, typename... Args>
+std::unique_ptr<task<R,T1,Args...>>
+make_task(R (T::*f)(Ts...),T1&& obj, Args&&... args)
+{
+	using ftype = std::function<R (T1, Ts...)>;
+	return std::unique_ptr<task<R,T1,Args...>>(new task<R,T1,Args...>(ftype{f},std::forward<T1>(obj),std::forward<Args>(args)...));
+}
+template <typename R,typename... Ts, typename... Args>
+task_base make_task(R (*f)(Ts...), Args&&... args)
+{
+	using ftype = std::function<R (Ts...)>;
+	task_base tb(std::unique_ptr<task_base>(new task<R,Args...>(ftype{f},std::forward<Args>(args)...)));
 	return tb;
 }
 #endif
+template <typename _Res>
+class task_future
+{
+public:
+	task_future(task_base& task, std::future<_Res>&& f): _task(task), _future(std::move(f)){
+	}
+	_Res get(){
+		_task();
+		return _future.get();
+	}
+	std::shared_future<_Res> share(){
+		return _future.share();
+	}
+	bool valid() const{
+		return _future.valid();
+	}
+	void wait() const{
+		_future.wait();
+	}
+	template< class Rep, class Period >
+		std::future_status wait_for( const std::chrono::duration<Rep,Period>& timeout_duration ) const{
+		return _future.wait_for(timeout_duration);
+	}
+	template< class Clock, class Duration >
+		std::future_status wait_until( const std::chrono::time_point<Clock,Duration>& timeout_time ) const{
+		return _future.wait_until(timeout_time);
+	}
+private:
+	task_base& _task;
+	std::future<_Res> _future;
+};
+
 #endif

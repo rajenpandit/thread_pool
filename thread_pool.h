@@ -26,12 +26,18 @@ public:
 public:
 	void start();
 	void stop();
-	void add_task(task_base&& task);
+	template<typename T>
+	task_future<typename T::result_type> add_task(std::unique_ptr<T>&& task){
+		task_future<typename T::result_type> f = task->get_future();
+		add_task(task_base(std::move(task)));
+		return f;
+	}
 	void run();
 	bool is_started() const{
 		return _is_started;
 	}
 private:
+	void add_task(task_base&& task);
 	friend void swap(thread_pool& tp1, thread_pool& tp2){
 		std::lock_guard<std::mutex> lk1(tp1._queue_mutex);
 		std::lock_guard<std::mutex> lk2(tp2._queue_mutex);

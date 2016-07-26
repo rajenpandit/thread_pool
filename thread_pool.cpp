@@ -5,7 +5,7 @@ void thread_pool::start(){
 	std::lock_guard<std::mutex> lk(_queue_mutex);
 	if(_is_started == false)
 	{
-		for(int i=0; i< _pool_size; ++i){
+		for(unsigned int i=0; i< _pool_size; ++i){
 			_threads.push_back(std::thread(&thread_pool::run,this));
 		}
 		_is_started = true;

@@ -1,4 +1,4 @@
-CXXFLAGS:=$(CXXFLAGS) -std=c++11
+CXXFLAGS:=$(CXXFLAGS) -std=c++14 -Wall
 OBJS=thread_pool.o
 TestProg: $(OBJS) TestProg.o 
 	$(CXX) TestProg.o $(OBJS) -lpthread -o TestProg
