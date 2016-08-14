@@ -36,12 +36,22 @@ void thread_pool::run(){
 		{
 			std::unique_lock<std::mutex> lk(_queue_mutex);
 			_cv.wait(lk, [this]{return (!_task_queue.empty() || _stop_threads);});	
-			if(_stop_threads)
+			if(_stop_threads){
+				while(!_task_queue.empty()){
+					_task_queue.pop();
+				}
 				return;
+			}
 			t = std::move(_task_queue.front());
 			_task_queue.pop();
+			
+
 		}
-//		std::cout<<"Called from:"<<std::this_thread::get_id();
-		t();
+		try{
+			t();
+		}
+		catch(std::exception & e){
+		}
+
 	}
 }

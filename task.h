@@ -12,7 +12,9 @@ template <typename _Res> class task_future;
 class task_base
 {
 public:
-	task_base()=default;
+	task_base()
+	{
+	};
 	task_base(std::unique_ptr<task_base>&& task) : _task(std::move(task)){
 	}
 	task_base(task_base& tb)=delete;
@@ -24,6 +26,8 @@ public:
 		_task=std::move(tb._task);
 	}	
 public:
+	virtual ~task_base(){
+	}
 	virtual void operator () (){
 		(*_task)();
 	};
@@ -70,6 +74,8 @@ public:
 	task& operator = (task&& t){
 		swap(*this, t);
 	}
+	~task(){
+	}
 public:
 	template <typename... Args, std::size_t... Is>
 	void helper_func(std::tuple<Args...>& tup, helper_index<Is...>){
@@ -86,36 +92,47 @@ public:
 public:
 	void operator () (){
 		call_helper h(*this);
-		std::call_once(flag,h);
+		std::call_once(_flag,h);
 	}
 private:
 	friend void swap(task& a, task& b){
 		//std::swap(a._function, b._function);
 		std::swap(a._args, b._args);	
+		std::swap(a._pt, b._pt);
+		std::swap(a._flag, b._flag);
 	}
 private:
 	std::packaged_task<R(Ts...)> _pt;
 	std::tuple<Ts...> _args;
-	std::once_flag flag;
+	std::once_flag _flag;
 };
 
+template<typename F, typename... Args, typename R=typename std::result_of<F(Args...)>::type>
+std::unique_ptr<task<R,Args...>>
+make_task(F&& fun, Args... args){
+        return std::unique_ptr<task<R,Args...>>(new task<R,Args...>(std::forward<F>(fun),std::forward<Args>(args)...));
+}
+
+#if 0
 //For future reference : decltype(std::declval<F>()(std::declval<Args>()...))
 template <typename F, typename... Args, typename R=decltype(std::declval<F>()(std::declval<Args>()...))>
 std::unique_ptr<task<R,Args...>>
-make_task(F&& fun, Args&&... args)
-{
+make_task(F&& fun, Args&&... args){
 	//using R=;
 	return std::unique_ptr<task<R,Args...>>(new task<R,Args...>(std::forward<F>(fun),std::forward<Args>(args)...));
 }
+
 template <typename F, typename T,typename... Args, typename R=decltype((std::declval<T>().*std::declval<F>())(std::declval<Args>()...))>
+//template <typename F, typename T,typename... Args, typename R=int>
 std::unique_ptr<task<R,T,Args...>>
 make_task(F fun, T&& obj, Args&&... args)
 {
 	//using R=int;
-	return std::unique_ptr<task<R,T,Args...>>(new task<R,T,Args...>(std::function<R(T,Args...)>(std::forward<F>(fun)),
+	return std::unique_ptr<task<R,T,Args...>>
+		(new task<R,T,Args...>(std::function<R(T,Args...)>(std::forward<F>(fun)),
 				std::forward<T>(obj),std::forward<Args>(args)...));
 }
-
+#endif
 #if 0
 template <typename R, typename T, typename... Ts, typename T1, typename... Args>
 std::unique_ptr<task<R,T1,Ts...>>
