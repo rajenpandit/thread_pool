@@ -1,5 +1,5 @@
-VERSION=3.0.0.0.0
-CXXFLAGS:=$(CXXFLAGS) -std=c++11 -Wall -g
+VERSION=3.0.0.1.0
+CXXFLAGS:=$(CXXFLAGS) -std=c++14 -Wall -g
 OBJS=thread_pool.o
 TestProg: $(OBJS) TestProg.o  release
 	$(CXX) TestProg.o $(OBJS) -lpthread -o TestProg

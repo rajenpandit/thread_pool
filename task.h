@@ -6,8 +6,12 @@
 #include <memory>
 #include <future>
 #include <mutex>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
 //#include <type_traits>
 
+using namespace std::chrono_literals;
 template <typename _Res> class task_future;
 class task_base
 {
@@ -15,16 +19,33 @@ public:
 	task_base()
 	{
 	};
-	task_base(std::unique_ptr<task_base>&& task) : _task(std::move(task)){
+	task_base(std::unique_ptr<task_base>&& task) : _task(std::move(task)), _priority(0),_time_point(0ms){
 	}
 	task_base(task_base& tb)=delete;
 	void operator=(task_base& tb)=delete;
 	task_base(task_base&& tb){
 		_task=std::move(tb._task);
+		_priority = tb._priority;
+		_time_point = tb._time_point;
 	}
 	void operator=(task_base&& tb){
 		_task=std::move(tb._task);
+		_priority = tb._priority;
+		_time_point = tb._time_point;
 	}	
+	void set_priority(unsigned int priority){
+		_priority = priority;
+	}
+	unsigned int get_priority() const{
+		return _priority;
+	}
+	void set_waiting_period(std::chrono::milliseconds waiting_period){
+		_time_point  =  std::chrono::system_clock::now() + waiting_period;
+
+	}
+	std::chrono::system_clock::time_point get_execution_time_point() const{
+		return _time_point;
+	}
 public:
 	virtual ~task_base(){
 	}
@@ -33,6 +54,9 @@ public:
 	};
 protected:
 	std::unique_ptr<task_base> _task;
+/*lesser value, higher priority*/
+	unsigned int _priority;
+	std::chrono::system_clock::time_point _time_point;
 };
 
 

@@ -1,4 +1,6 @@
 #include "thread_pool.h"
+#include <ctime>
+#include <iomanip>
 
 
 void thread_pool::start(){
@@ -22,9 +24,10 @@ void thread_pool::stop(){
 		t.join();
 	}
 }
-void thread_pool::add_task(task_base&& task){
+void thread_pool::add_task(task_base&& task,std::chrono::milliseconds waiting_period){
 	{
 		std::lock_guard<std::mutex> lk(_queue_mutex);
+		task.set_waiting_period(waiting_period);
 		_task_queue.push(std::move(task));
 	}
 	_cv.notify_one();
@@ -34,24 +37,43 @@ void thread_pool::run(){
 	{
 		task_base t;
 		{
-			std::unique_lock<std::mutex> lk(_queue_mutex);
+			std::unique_lock<std::mutex> lk(_cv_mutex);
 			_cv.wait(lk, [this]{return (!_task_queue.empty() || _stop_threads);});	
+			std::lock_guard<std::mutex> lkg(_queue_mutex);
 			if(_stop_threads){
 				while(!_task_queue.empty()){
 					_task_queue.pop();
 				}
 				return;
 			}
-			t = std::move(_task_queue.front());
+			t = std::move(const_cast<task_base&>(_task_queue.top()));
 			_task_queue.pop();
-			
+		}
+		{
+			if(t.get_execution_time_point() > std::chrono::system_clock::now()){
+				std::unique_lock<std::mutex> lk(_cv_mutex);
+				auto duration =  t.get_execution_time_point()-std::chrono::system_clock::now();
+				{
+					std::lock_guard<std::mutex> lk(_queue_mutex);
+					_task_queue.push(std::move(t));
+				}
+				_cv.wait_for(lk,duration);
+				continue;
+
+			}
 
 		}
 		try{
+/*
+			std::time_t exc_c = std::chrono::system_clock::to_time_t(t.get_execution_time_point());
+			std::time_t now_c = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+			std::cout<<"Time Point:"<< std::put_time(std::localtime(&exc_c), "%F %T")<<std::endl;
+			std::cout<<"Now:"<< std::put_time(std::localtime(&now_c), "%F %T")<<std::endl;
+
+*/
 			t();
 		}
 		catch(std::exception & e){
 		}
-
 	}
 }
