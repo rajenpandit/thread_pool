@@ -1,7 +1,7 @@
 #include "task.h"
 #include <iostream>
 #include <map>
-
+using namespace rpt;
 class A{
 	public:
 		A()=default;

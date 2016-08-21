@@ -9,57 +9,83 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
-//#include <type_traits>
+
+/*!
+ * @namespace rpt
+*/
+namespace rpt{
 
 using namespace std::chrono_literals;
 template <typename _Res> class task_future;
+/** 
+ * task_base class provides wrapper to its templated child clasess.
+ * @author Rajendra Pandit (rajenpandit)
+ * @bug No know bugs.
+*/
 class task_base
 {
 public:
-	task_base()
-	{
+	
+	task_base(){/// empty constructore is provided to make few containers happy
 	};
-	task_base(std::unique_ptr<task_base>&& task) : _task(std::move(task)), _priority(0),_time_point(0ms){
+
+
+	task_base(std::unique_ptr<task_base>&& task) : _task(std::move(task)),_time_point(0ms){
+	/*!
+		@param task is a rvalue reference to unique_ptr pointing to a task object created by using rpt::make_task function
+		@see rpt::make_task
+	 */
 	}
+
+	/*! deleted copy constructor to make object non copyable */
 	task_base(task_base& tb)=delete;
-	void operator=(task_base& tb)=delete;
-	task_base(task_base&& tb){
+	/*! deleted assignment operator to make object non assignable */
+	void operator=(task_base& tb)=delete; 
+
+	/*! move constructor allow task_base to move instead of being copied */
+	task_base(task_base&& tb){ 
 		_task=std::move(tb._task);
-		_priority = tb._priority;
 		_time_point = tb._time_point;
 	}
-	void operator=(task_base&& tb){
+	/*! move assignment operator allow task_base object to move the assignee instead of making a copy */
+	void operator=(task_base&& tb){ 
 		_task=std::move(tb._task);
-		_priority = tb._priority;
 		_time_point = tb._time_point;
-	}	
-	void set_priority(unsigned int priority){
-		_priority = priority;
 	}
-	unsigned int get_priority() const{
-		return _priority;
-	}
+	/*! Sets a waiting time period during #rpt::task assignment to #rpt::thread_pool. 
+	 * The assigned task will be invoked once waiting period is over.
+	 * This function is used by #rpt::thread_pool.
+	 * @param waiting_period %A waiting period value in milliseconds.
+	 */
 	void set_waiting_period(std::chrono::milliseconds waiting_period){
 		_time_point  =  std::chrono::system_clock::now() + waiting_period;
 
 	}
+	/*!
+	 * Returns a std::chrono::system_clock::time_point
+	 * which informs #rpt::thread_pool that when a #rpt::task has to be invoked.
+	 */
 	std::chrono::system_clock::time_point get_execution_time_point() const{
 		return _time_point;
 	}
 public:
 	virtual ~task_base(){
 	}
+	/*!
+	 * %A functor, which invokes the #rpt::task's operator ().
+	 */
 	virtual void operator () (){
 		(*_task)();
 	};
 protected:
 	std::unique_ptr<task_base> _task;
-/*lesser value, higher priority*/
-	unsigned int _priority;
 	std::chrono::system_clock::time_point _time_point;
 };
 
-
+/*
+ * class task wraps a callable object along with its argument which need to be passed during function call.
+ * The callable object will be invoked by using operator(). 
+ */
 template<typename R, typename... Ts>
 class task : public task_base
 {
@@ -67,6 +93,9 @@ public:
 	using type = task<R,Ts...>;
 	using result_type = R;
 private:
+/*! 
+	Helper class to extract arguments from tuple and pass during function call
+*/
 	template <std::size_t... T>
 		struct helper_index{
 		};
@@ -83,24 +112,32 @@ private:
 		{}
 		void operator()()
 		{_p.helper_func(_p._args);}
-	private:
+		private:
 		task::type &_p;
 	};
 public:	
+	/*! templated constructor, takes two parameters:
+	 * @param fun, a function of type F
+	 * @param args, arguments need to be passed to functions during invocation
+	 */ 
 	template <typename F>
 	task(F&& func, Ts&&... args) : _pt(std::forward<F>(func)), _args(std::forward<Ts>(args)...){
 	}
+	/*! task object is non copyable.*/
 	task(const task& t)=delete;
+	/*! task object is non assignable.*/
 	task& operator = (const task& t) = delete;
+	/*! task object can be moved from one to another */
 	task(task&& t){
 		swap(*this, t);
 	}
+	/*! task object can be moved and assgined from one to another */
 	task& operator = (task&& t){
 		swap(*this, t);
 	}
 	~task(){
 	}
-public:
+private:
 	template <typename... Args, std::size_t... Is>
 	void helper_func(std::tuple<Args...>& tup, helper_index<Is...>){
 		_pt(std::get<Is>(tup)...);
@@ -110,15 +147,18 @@ public:
 	void helper_func(std::tuple<Args...>& tup){
 		helper_func(tup, helper_gen_seq<sizeof...(Args)>{});
 	}
+public:
 	task_future<R> get_future(){
 		return task_future<R>(*this,_pt.get_future());
 	}
 public:
+	/*! Invokes callable object */
 	void operator () (){
 		call_helper h(*this);
 		std::call_once(_flag,h);
 	}
 private:
+	/*! swaps two given rpt::task objects */
 	friend void swap(task& a, task& b){
 		//std::swap(a._function, b._function);
 		std::swap(a._args, b._args);	
@@ -131,65 +171,8 @@ private:
 	std::once_flag _flag;
 };
 
-template<typename F, typename... Args, typename R=typename std::result_of<F(Args...)>::type>
-std::unique_ptr<task<R,Args...>>
-make_task(F&& fun, Args... args){
-        return std::unique_ptr<task<R,Args...>>(new task<R,Args...>(std::forward<F>(fun),std::forward<Args>(args)...));
-}
 
-#if 0
-//For future reference : decltype(std::declval<F>()(std::declval<Args>()...))
-template <typename F, typename... Args, typename R=decltype(std::declval<F>()(std::declval<Args>()...))>
-std::unique_ptr<task<R,Args...>>
-make_task(F&& fun, Args&&... args){
-	//using R=;
-	return std::unique_ptr<task<R,Args...>>(new task<R,Args...>(std::forward<F>(fun),std::forward<Args>(args)...));
-}
 
-template <typename F, typename T,typename... Args, typename R=decltype((std::declval<T>().*std::declval<F>())(std::declval<Args>()...))>
-//template <typename F, typename T,typename... Args, typename R=int>
-std::unique_ptr<task<R,T,Args...>>
-make_task(F fun, T&& obj, Args&&... args)
-{
-	//using R=int;
-	return std::unique_ptr<task<R,T,Args...>>
-		(new task<R,T,Args...>(std::function<R(T,Args...)>(std::forward<F>(fun)),
-				std::forward<T>(obj),std::forward<Args>(args)...));
-}
-#endif
-#if 0
-template <typename R, typename T, typename... Ts, typename T1, typename... Args>
-std::unique_ptr<task<R,T1,Ts...>>
-make_task(R (T::*f)(Ts...),T1&& obj, Args&&... args)
-{
-	using ftype = std::function<R (T1, Ts...)>;
-	return std::unique_ptr<task<R,T1,Ts...>>(new task<R,T1,Ts...>(ftype{f},std::forward<T1>(obj),std::forward<Ts>(args)...));
-}
-/*
-template <typename R,typename... Ts, typename... Args>
-std::unique_ptr<task<R,Ts...>>
-make_task(R (*f)(Ts...), Args&&... args)
-{
-	using ftype = std::function<R (Ts...)>;
-	return std::unique_ptr<task<R,Ts...>>(new task<R,Ts...>(ftype{f},std::forward<Ts>(args)...));
-}
-*/
-#elif 0
-template <typename R, typename T, typename... Ts, typename T1, typename... Args>
-std::unique_ptr<task<R,T1,Args...>>
-make_task(R (T::*f)(Ts...),T1&& obj, Args&&... args)
-{
-	using ftype = std::function<R (T1, Ts...)>;
-	return std::unique_ptr<task<R,T1,Args...>>(new task<R,T1,Args...>(ftype{f},std::forward<T1>(obj),std::forward<Args>(args)...));
-}
-template <typename R,typename... Ts, typename... Args>
-task_base make_task(R (*f)(Ts...), Args&&... args)
-{
-	using ftype = std::function<R (Ts...)>;
-	task_base tb(std::unique_ptr<task_base>(new task<R,Args...>(ftype{f},std::forward<Args>(args)...)));
-	return tb;
-}
-#endif
 template <typename _Res>
 class task_future
 {
@@ -222,4 +205,20 @@ private:
 	std::future<_Res> _future;
 };
 
+/*!
+ * To execute a function by using #rpt::thread_pool, The function has to be wrapped as a #rpt::task object
+ * which further need to be added by using #add_task method of #rpt::thread_pool class.
+ * #make_task creates #rpt::task object by wrapping funtion pointer and its arguments (if any), 
+ * returns a unique_ptr to it.
+ * @param fun: a function pointer, a member function or a callable object
+ * @param args: arguments need to be passed during function call
+ */
+template<typename F, typename... Args, typename R=typename std::result_of<F(Args...)>::type>
+std::unique_ptr<task<R,Args...>> make_task(F&& fun, Args... args){
+
+        return std::unique_ptr<task<R,Args...>>(new task<R,Args...>(std::forward<F>(fun),std::forward<Args>(args)...));
+}
+
+
+}
 #endif

@@ -3,6 +3,7 @@
 #include <thread>
 #include <iostream>
 #include <memory>
+using namespace rpt;
 class A{
 	public:
 		A(const A&){

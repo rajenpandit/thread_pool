@@ -2,7 +2,18 @@
 #include <ctime>
 #include <iomanip>
 
+using namespace rpt;
+thread_pool::thread_pool(int pool_size):
+	_pool_size(pool_size),
+	_task_queue([](const task_base& lhs, const task_base& rhs)->bool{
+				return (lhs.get_execution_time_point() > rhs.get_execution_time_point());
+			})
+{
+	if(_pool_size==0)
+		_pool_size=1;
+	_stop_threads=false;
 
+}
 void thread_pool::start(){
 	std::lock_guard<std::mutex> lk(_queue_mutex);
 	if(_is_started == false)
