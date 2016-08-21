@@ -1,3 +1,0 @@
-thread_pool library internally manages configured number of threads. which will be used for any givent task.
-3.0.0.1.0:
-	Implemented execution of function after a specified duration.
