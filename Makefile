@@ -1,4 +1,4 @@
-VERSION=3.0.0.1.2
+VERSION=1.0.0.1.2
 CXXFLAGS:=$(CXXFLAGS) -std=c++14 -Wall -g
 OBJS=thread_pool.o
 thread_pool.o:
