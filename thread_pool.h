@@ -28,7 +28,14 @@ public:
 		swap(*this, tp);
 	}
 public:
+	/*!
+	 * starts all threads one by one from the thread pool.
+	 */
 	void start();
+
+	/*!
+	 * stops all threads one by one after waiting on join and keep inside thread pool.
+	 */
 	void stop();
 	/*! 
 	 * add task to task_que, which will be picked and invoked by a thread from thread_pool.
@@ -37,8 +44,10 @@ public:
 	 */
 	template<typename T>
 	task_future<typename T::result_type> add_task(std::unique_ptr<T>&& task, unsigned int priority = 0){
-		task_future<typename T::result_type> f = task->get_future();
-		add_task(task_base(std::move(task)),std::chrono::milliseconds(priority));
+		auto future = task->get_future();
+		auto task_b = std::make_shared<task_base>(std::move(task));
+		auto f = task_future<typename T::result_type>(task_b,std::move(future));
+		add_task(task_b,std::chrono::milliseconds(priority));
 		return f;
 	}
 	/*! 
@@ -49,16 +58,28 @@ public:
 	template<typename T>
 	task_future<typename T::result_type> add_task(std::unique_ptr<T>&& task,
 			std::chrono::milliseconds waiting_period ){
-		task_future<typename T::result_type> f = task->get_future();
-		add_task(task_base(std::move(task)),waiting_period);
+
+		auto future = task->get_future();
+		auto task_b = std::make_shared<task_base>(std::move(task));
+		auto f = task_future<typename T::result_type>(task_b,std::move(future));
+		add_task(task_b,waiting_period);
 		return f;
 	}
 	bool is_started() const{
 		return _is_started;
 	}
 private:
+	/*!
+	 * start all the threads one by one and make the thread_pool ready for use.
+	 */
 	void run();
-	void add_task(task_base&& task,std::chrono::milliseconds waiting_period );
+	/*!
+	 * Adding task to std::prority_queue
+	 */
+	void add_task(std::shared_ptr<task_base> task,std::chrono::milliseconds waiting_period );
+	/*!
+	 * swap function is used to swap the members from one to other 
+	 */
 	friend void swap(thread_pool& tp1, thread_pool& tp2){
 		std::lock_guard<std::mutex> lk1(tp1._queue_mutex);
 		std::lock_guard<std::mutex> lk2(tp2._queue_mutex);
@@ -68,15 +89,16 @@ private:
 		std::swap(tp1._threads, tp2._threads);
 	}
 private:
-	unsigned int _pool_size;
-	bool _stop_threads;
-	bool _is_started;
-	std::priority_queue<task_base,std::vector<task_base>,
-		std::function<bool(const task_base& lhs, const task_base& rhs)>> _task_queue;
-	std::mutex _queue_mutex;
+	unsigned int _pool_size; /*! < Define thread_pool size. */
+	bool _stop_threads;/*! < Informs thread pool manager that all threads need to stop. */
+	bool _is_started; /*! < Informs thread pool manager that threads are started. */
+	std::priority_queue<std::shared_ptr<task_base>,std::vector<std::shared_ptr<task_base>>,
+		std::function<bool(const std::shared_ptr<task_base>& lhs, const std::shared_ptr<task_base>& rhs)>> _task_queue; 
+	/*! < holds assigned rpt::task objects. */
+	std::mutex _queue_mutex; /*! < to protect _task_queue from being simultaneously accessed by multiple threads. */
 	std::mutex _cv_mutex;
-	std::condition_variable _cv;
-	std::vector<std::thread> _threads;
+	std::condition_variable _cv; /*! < a condition variable which informs idle threads once a task is assigned.*/
+	std::vector<std::thread> _threads; /*! < Container to keep all the threads. */
 };
 }
 #endif

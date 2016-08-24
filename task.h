@@ -12,6 +12,8 @@
 
 /*!
  * @namespace rpt
+ * @author Rajendra Pandit (rajenpandit)
+ * @bug No know bugs.
 */
 namespace rpt{
 
@@ -82,7 +84,7 @@ protected:
 	std::chrono::system_clock::time_point _time_point;
 };
 
-/*
+/*!
  * class task wraps a callable object along with its argument which need to be passed during function call.
  * The callable object will be invoked by using operator(). 
  */
@@ -148,8 +150,8 @@ private:
 		helper_func(tup, helper_gen_seq<sizeof...(Args)>{});
 	}
 public:
-	task_future<R> get_future(){
-		return task_future<R>(*this,_pt.get_future());
+	std::future<R> get_future(){
+		return _pt.get_future();
 	}
 public:
 	/*! Invokes callable object */
@@ -172,15 +174,32 @@ private:
 };
 
 
-
+/*!
+ * thread_pool provides asynchronous execution of assigned task. 
+ * Once the task is assgined to thread_pool there is no option to
+ * capture the value return by the task once it is executed.
+ * task_future class enables caller to captrue the retrun value once executed.
+ * thread_pool returns a task_future object, which provides interface to get the return value.
+ * When task_future.get
+ */
 template <typename _Res>
 class task_future
 {
 public:
-	task_future(task_base& task, std::future<_Res>&& f): _task(task), _future(std::move(f)){
+	task_future(const std::shared_ptr<task_base>& task_b, std::future<_Res>&& f): _task(task_b), _future(std::move(f)){
+	}
+	task_future(const task_future& ) = delete;
+	task_future(task_future&& tf){
+		swap(*this,tf);	
+	}
+	void operator = (const task_future&) = delete;
+	void operator = (task_future&& tf){
+		swap(*this,tf);
+	}
+	~task_future(){
 	}
 	_Res get(){
-		_task();
+		(*_task)();
 		return _future.get();
 	}
 	std::shared_future<_Res> share(){
@@ -201,7 +220,11 @@ public:
 		return _future.wait_until(timeout_time);
 	}
 private:
-	task_base& _task;
+	friend void swap(task_future& a, task_future& b){
+		std::swap(a._task,b._task);
+		std::swap(a._future,b._future);
+	}
+	std::shared_ptr<task_base> _task;
 	std::future<_Res> _future;
 };
 

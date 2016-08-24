@@ -1,13 +1,8 @@
-VERSION=3.0.0.1.0
+VERSION=3.0.0.1.2
 CXXFLAGS:=$(CXXFLAGS) -std=c++14 -Wall -g
 OBJS=thread_pool.o
-TestProg: $(OBJS) TestProg.o  release
-	$(CXX) TestProg.o $(OBJS) -lpthread -o TestProg
-	rm $(OBJS) TestProg.o
 thread_pool.o:
 	$(CXX) $(CXXFLAGS) -c thread_pool.cpp
-TestProg.o:
-	$(CXX) $(CXXFLAGS) -c TestProg.cpp
 release:
 	ar -rv libthreadpool.a $(OBJS)
 install:

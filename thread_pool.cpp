@@ -5,8 +5,8 @@
 using namespace rpt;
 thread_pool::thread_pool(int pool_size):
 	_pool_size(pool_size),
-	_task_queue([](const task_base& lhs, const task_base& rhs)->bool{
-				return (lhs.get_execution_time_point() > rhs.get_execution_time_point());
+	_task_queue([](const std::shared_ptr<task_base>& lhs, const std::shared_ptr<task_base>& rhs)->bool{
+				return (lhs->get_execution_time_point() > rhs->get_execution_time_point());
 			})
 {
 	if(_pool_size==0)
@@ -35,18 +35,18 @@ void thread_pool::stop(){
 		t.join();
 	}
 }
-void thread_pool::add_task(task_base&& task,std::chrono::milliseconds waiting_period){
+void thread_pool::add_task(std::shared_ptr<task_base> task,std::chrono::milliseconds waiting_period){
 	{
 		std::lock_guard<std::mutex> lk(_queue_mutex);
-		task.set_waiting_period(waiting_period);
-		_task_queue.push(std::move(task));
+		task->set_waiting_period(waiting_period);
+		_task_queue.push(task);
 	}
 	_cv.notify_one();
 }
 void thread_pool::run(){
 	while(true)
 	{
-		task_base t;
+		std::shared_ptr<task_base> t;
 		{
 			std::unique_lock<std::mutex> lk(_cv_mutex);
 			_cv.wait(lk, [this]{return (!_task_queue.empty() || _stop_threads);});	
@@ -57,16 +57,16 @@ void thread_pool::run(){
 				}
 				return;
 			}
-			t = std::move(const_cast<task_base&>(_task_queue.top()));
+			t = _task_queue.top();
 			_task_queue.pop();
 		}
 		{
-			if(t.get_execution_time_point() > std::chrono::system_clock::now()){
+			if(t->get_execution_time_point() > std::chrono::system_clock::now()){
 				std::unique_lock<std::mutex> lk(_cv_mutex);
-				auto duration =  t.get_execution_time_point()-std::chrono::system_clock::now();
+				auto duration =  t->get_execution_time_point()-std::chrono::system_clock::now();
 				{
 					std::lock_guard<std::mutex> lk(_queue_mutex);
-					_task_queue.push(std::move(t));
+					_task_queue.push(t);
 				}
 				_cv.wait_for(lk,duration);
 				continue;
@@ -82,7 +82,8 @@ void thread_pool::run(){
 			std::cout<<"Now:"<< std::put_time(std::localtime(&now_c), "%F %T")<<std::endl;
 
 */
-			t();
+			if(t!=nullptr)
+				(*t)();
 		}
 		catch(std::exception & e){
 		}
